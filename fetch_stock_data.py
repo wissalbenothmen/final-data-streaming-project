@@ -1,32 +1,32 @@
 import requests
-from kafka import KafkaProducer
 import json
+from kafka import KafkaProducer
 import time
 
+# Configuration
 API_KEY = "FXMGLC46AQCWXVE2"
 KAFKA_TOPIC = "stock-stream"
 KAFKA_SERVER = "localhost:9092"
+ALPHAVANTAGE_URL = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=AAPL&apikey={API_KEY}"
 
-def fetch_data():
-    url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&tickers=AAPL&apikey={API_KEY}"
-    response = requests.get(url)
-    
-    if response.status_code == 200:
-        print(response.json())  # Print the entire response
-        return response.json().get('data', [])  # Safely get 'data' or return an empty list if 'data' is not present
-    else:
-        print("Error fetching data", response.status_code)
-        return []
+# Initialize Kafka producer
+producer = KafkaProducer(
+    bootstrap_servers=KAFKA_SERVER,
+    value_serializer=lambda v: json.dumps(v).encode('utf-8')
+)
 
+def fetch_data_from_alphavantage():
+    """Fetches news sentiment data from AlphaVantage API."""
+    response = requests.get(ALPHAVANTAGE_URL)
+    return response.json()
 
-def produce_data():
-    producer = KafkaProducer(bootstrap_servers=KAFKA_SERVER, value_serializer=lambda v: json.dumps(v).encode('utf-8'))
+try:
     while True:
-        news_data = fetch_data()
-        for article in news_data:
-            producer.send(KAFKA_TOPIC, article)
-            time.sleep(1)  
-        time.sleep(60)  
-
-if __name__ == "__main__":
-    produce_data()
+        data = fetch_data_from_alphavantage()
+        producer.send(KAFKA_TOPIC, data)
+        print(f"Sent data to Kafka (topic: {KAFKA_TOPIC}): {data}")
+        time.sleep(60)  # Fetch data every 60 seconds (adjust as needed)
+except KeyboardInterrupt:
+    print("Stopping producer...")
+finally:
+    producer.close()
